@@ -33,7 +33,7 @@ func main() {
 		LoggerFields: logrus.Fields{
 			"testing": "test",
 		},
-		HTTPPort: 8080,
+		HTTPPort:              8080,
 		DisableOIDCMiddleware: true,
 	})
 

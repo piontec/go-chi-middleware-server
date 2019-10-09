@@ -9,10 +9,10 @@ require (
 	github.com/go-chi/docgen v1.0.5
 	github.com/go-chi/render v1.0.1
 	github.com/gorilla/mux v1.7.3 // indirect
+	github.com/piontec/grpc-middleware-server v0.1.0
 	github.com/sirupsen/logrus v1.4.2
 	github.com/smartystreets/goconvey v0.0.0-20190731233626-505e41936337 // indirect
-	github.com/stretchr/testify v1.3.0 // indirect
+	github.com/stretchr/testify v1.3.0
 	github.com/urfave/negroni v1.0.0 // indirect
-	golang.org/x/net v0.0.0-20190613194153-d28f0bde5980 // indirect
-	golang.org/x/sys v0.0.0-20190801041406-cbf593c0f2f3 // indirect
+	google.golang.org/grpc v1.24.0
 )

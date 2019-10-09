@@ -1,5 +1,5 @@
 # Image URL to use all building/pushing image targets
-BIN ?= failedcloud-apiserver
+BIN ?= apiserver
 IMG ?= ${BIN}:latest
 
 all: test build

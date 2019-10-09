@@ -137,14 +137,13 @@ func (s *ChiServer) Run() {
 	s.logger.Infof("Starting HTTP server on port :%d...", s.options.HTTPPort)
 
 	go func() {
-		if err := s.server.ListenAndServe(); err != nil {
+		s.logger.Infof("Server started")
+		s.started = true
+		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			s.logger.Panicf("Could not listen on port %d: %v\n", s.options.HTTPPort, err)
 		}
 		s.stopChan <- ""
 	}()
-
-	s.started = true
-	s.logger.Infof("Server started")
 
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt)
@@ -164,6 +163,8 @@ func (s *ChiServer) Stop() {
 	s.logger.Infof("Stopping the server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	s.server.SetKeepAlivesEnabled(false)
 	if err := s.server.Shutdown(ctx); err != nil {
 		s.logger.Errorf("Error shutting down server: %v", err)
 	}

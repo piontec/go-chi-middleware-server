@@ -33,7 +33,7 @@ func (l *StructuredLogger) NewLogEntry(r *http.Request) middleware.LogEntry {
 	entry := &StructuredLoggerEntry{Logger: logrus.NewEntry(l.Logger)}
 	var logFields logrus.Fields
 	if l.ExtraFields != nil {
-		logFields = l.ExtraFields 
+		logFields = l.ExtraFields
 	} else {
 		logFields = logrus.Fields{}
 	}
