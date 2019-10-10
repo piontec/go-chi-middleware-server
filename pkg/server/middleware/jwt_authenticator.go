@@ -1,10 +1,16 @@
 package middleware
 
 import (
+	"bytes"
+	"crypto/rsa"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
+	"strings"
 	"sync"
 
 	jwtmiddleware "github.com/auth0/go-jwt-middleware"
@@ -12,41 +18,57 @@ import (
 )
 
 type jwks struct {
-	Keys []jsonWebKeys `json:"keys"`
+	Keys []jsonWebKey `json:"keys"`
 }
 
-type jsonWebKeys struct {
+type jsonWebKey struct {
 	Kty string   `json:"kty"`
 	Kid string   `json:"kid"`
 	Use string   `json:"use"`
+	Alg string   `json:"alg"`
 	N   string   `json:"n"`
 	E   string   `json:"e"`
-	X5c []string `json:"x5c"`
+	X5c []string `json:"x5c,omitempty"`
 }
 
 // JwtAuthenticator is a middleware for validating JWT auth tokens
 type JwtAuthenticator struct {
-	certLock sync.RWMutex
-	cert     string
-	audience string
-	issuer   string
-	loader   *JwkCertLoader
+	audience       string
+	issuer         string
+	jwksURL        string
+	publicPrefixes []string
+	loader         *JwksKeyLoader
 }
 
 // NewJWTAuthenticator returns a new authenticator for the given audience and issuer values
 // expected in JWT tokens
-func NewJWTAuthenticator(audience, issuer string) *JwtAuthenticator {
+func NewJWTAuthenticator(audience, issuer, jwksURL string, publicURLPrefixes []string) *JwtAuthenticator {
 	return &JwtAuthenticator{
-		audience: audience,
-		issuer:   issuer,
-		loader:   NewJwkCertLoader(issuer),
+		audience:       audience,
+		issuer:         issuer,
+		jwksURL:        jwksURL,
+		publicPrefixes: publicURLPrefixes,
+		loader:         NewJwksKeyLoader(jwksURL),
 	}
+}
+
+func (a *JwtAuthenticator) getRSAPublicKeyByID(keyID string) (*rsa.PublicKey, error) {
+	keyCopy, err := a.loader.GetPublicKey(keyID)
+	// key loading can fail because of cert expiry and renewal; try to reload in that case
+	if err != nil {
+		a.loader.Reload()
+		keyCopy, reloadErr := a.loader.GetPublicKey(keyID)
+		if reloadErr != nil {
+			return nil, fmt.Errorf("can't load public key for JWT validation: %v", reloadErr)
+		}
+		return keyCopy, nil
+	}
+
+	return keyCopy, nil
 }
 
 // GetHandler returns new middleware handler
 func (a *JwtAuthenticator) GetHandler() func(next http.Handler) http.Handler {
-	// !FIXME: we need to check for no-auth URL prefixes here!
-	// !FIXME: extrac validationKeyGetter so it can be replaced for test
 	jwtMiddleware := jwtmiddleware.New(jwtmiddleware.Options{
 		ValidationKeyGetter: func(token *jwt.Token) (interface{}, error) {
 			// Verify 'aud' claim
@@ -59,54 +81,62 @@ func (a *JwtAuthenticator) GetHandler() func(next http.Handler) http.Handler {
 			if !checkIss {
 				return token, errors.New("invalid issuer")
 			}
-
+			// Load required RSA public key
 			keyID := token.Header["kid"].(string)
-			certCopy, err := a.loader.GetCert(keyID)
+			key, err := a.getRSAPublicKeyByID(keyID)
 			if err != nil {
 				return token, err
 			}
-
-			result, err := jwt.ParseRSAPublicKeyFromPEM([]byte(certCopy))
-			if err != nil {
-				a.loader.Reload()
-				certCopy, reloadErr := a.loader.GetCert(keyID)
-				if reloadErr != nil {
-					return result, fmt.Errorf("can't load public certificate for JWT validation: %v", reloadErr)
-				}
-				return jwt.ParseRSAPublicKeyFromPEM([]byte(certCopy))
-			}
-
-			return result, err
+			return key, err
 		},
 		SigningMethod: jwt.SigningMethodRS256,
 		UserProperty:  CtxTokenKey,
 	})
-	return jwtMiddleware.Handler
-}
 
-// JwkCertLoader lazily loads and caches JWK certificate, but allows for forced reload
-type JwkCertLoader struct {
-	certLock sync.RWMutex
-	cert     string
-	once     *sync.Once
-	domain   string
-}
-
-// NewJwkCertLoader returns new JwkCertLoader
-func NewJwkCertLoader(domain string) *JwkCertLoader {
-	return &JwkCertLoader{
-		domain: domain,
-		once:   &sync.Once{},
+	return func(next http.Handler) http.Handler {
+		fn := func(w http.ResponseWriter, r *http.Request) {
+			// check if this is a public path that requires no authentication
+			isPublic := false
+			for _, prefix := range a.publicPrefixes {
+				urlPath := r.URL.EscapedPath()
+				if strings.HasPrefix(urlPath, prefix) {
+					isPublic = true
+					break
+				}
+			}
+			if isPublic { // if this URL is public, skip auth path
+				next.ServeHTTP(w, r)
+			} else {
+				jwtMiddleware.Handler(next).ServeHTTP(w, r)
+			}
+		}
+		return http.HandlerFunc(fn)
 	}
 }
 
-// GetCert loads the cert from the Internet if not available, else returns cached cert
-func (l *JwkCertLoader) GetCert(keyID string) (string, error) {
+// JwksKeyLoader lazily loads and caches JWK certificate, but allows for forced reload
+type JwksKeyLoader struct {
+	certLock sync.RWMutex
+	pubKey   *rsa.PublicKey
+	once     *sync.Once
+	jwksURL  string
+}
+
+// NewJwksKeyLoader returns new JwkCertLoader
+func NewJwksKeyLoader(jwksURL string) *JwksKeyLoader {
+	return &JwksKeyLoader{
+		jwksURL: jwksURL,
+		once:    &sync.Once{},
+	}
+}
+
+// GetPublicKey loads the cert from the online JWKS if not yet loaded
+// otherwise returns cached version
+func (l *JwksKeyLoader) GetPublicKey(keyID string) (*rsa.PublicKey, error) {
 	var doErr error
 	l.once.Do(func() {
-		newCert := ""
-		certURL := fmt.Sprintf("%s.well-known/jwks.json", l.domain)
-		resp, err := http.Get(certURL)
+		var pubKey *rsa.PublicKey
+		resp, err := http.Get(l.jwksURL)
 
 		if err != nil {
 			doErr = err
@@ -124,29 +154,65 @@ func (l *JwkCertLoader) GetCert(keyID string) (string, error) {
 
 		for k := range keys.Keys {
 			if keyID == keys.Keys[k].Kid {
-				newCert = "-----BEGIN CERTIFICATE-----\n" + keys.Keys[k].X5c[0] + "\n-----END CERTIFICATE-----"
+				if len(keys.Keys[k].X5c) > 0 {
+					newCert := "-----BEGIN CERTIFICATE-----\n" + keys.Keys[k].X5c[0] + "\n-----END CERTIFICATE-----"
+					pubKey, err = jwt.ParseRSAPublicKeyFromPEM([]byte(newCert))
+				} else {
+					pubKey, err = l.loadKeysFromComponents(keys.Keys[k])
+				}
 			}
 		}
 
-		if newCert == "" {
+		if pubKey == nil {
 			doErr = errors.New("unable to find appropriate key")
 			return
 		}
 
 		l.certLock.Lock()
-		l.cert = newCert
+		l.pubKey = pubKey
 		l.certLock.Unlock()
 		return
 	})
 	if doErr != nil {
-		return "", doErr
+		return nil, doErr
 	}
 	l.certLock.RLock()
 	defer l.certLock.RUnlock()
-	return l.cert, nil
+	return l.pubKey, nil
+}
+
+// adapted from https://stackoverflow.com/questions/25179492/create-public-key-from-modulus-and-exponent-in-golang
+func (l *JwksKeyLoader) loadKeysFromComponents(key jsonWebKey) (*rsa.PublicKey, error) {
+	decN, err := base64.RawURLEncoding.DecodeString(key.N)
+	if err != nil {
+		return nil, err
+	}
+	n := big.NewInt(0)
+	n.SetBytes(decN)
+
+	decE, err := base64.RawURLEncoding.DecodeString(key.E)
+	if err != nil {
+		return nil, err
+	}
+	var eBytes []byte
+	if len(decE) < 8 {
+		eBytes = make([]byte, 8-len(decE), 8)
+		eBytes = append(eBytes, decE...)
+	} else {
+		eBytes = decE
+	}
+	eReader := bytes.NewReader(eBytes)
+	var e uint64
+	err = binary.Read(eReader, binary.BigEndian, &e)
+	if err != nil {
+		return nil, err
+	}
+	pKey := &rsa.PublicKey{N: n, E: int(e)}
+
+	return pKey, nil
 }
 
 // Reload force the certificate to be reloaded from the source on the next GetCert() call
-func (l *JwkCertLoader) Reload() {
+func (l *JwksKeyLoader) Reload() {
 	l.once = &sync.Once{}
 }

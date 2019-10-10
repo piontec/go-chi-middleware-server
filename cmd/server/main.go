@@ -29,12 +29,21 @@ func main() {
 		r.Get("/hello", func(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("Hello root"))
 		})
+		r.Get("/public", func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("Hello public"))
+		})
 	}, &server.ChiServerOptions{
 		LoggerFields: logrus.Fields{
 			"testing": "test",
 		},
-		HTTPPort:              8080,
-		DisableOIDCMiddleware: true,
+		HTTPPort: 8080,
+		OIDCOptions: server.ChiOIDCMiddlewareOptions{
+			Audience:           "http://localhost",
+			Issuer:             "https://failedcloud.eu.auth0.com/",
+			JwksURL:            "https://www.googleapis.com/oauth2/v3/certs",
+			PublicURLsPrefixes: []string{"/pub"},
+		},
+		// DisableOIDCMiddleware: true,
 	})
 
 	printVersion(r.GetLogger())
