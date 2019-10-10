@@ -38,8 +38,9 @@ type ChiServerOptions struct {
 
 // ChiOIDCMiddlewareOptions configures OIDC Middleware
 type ChiOIDCMiddlewareOptions struct {
-	ServerDomain       string
-	OIDCDomain         string
+	Audience           string
+	Issuer             string
+	JwksURL            string
 	PublicURLsPrefixes []string
 }
 
@@ -50,8 +51,8 @@ func (o *ChiServerOptions) fillDefaults(logger *logrus.Logger) {
 	if o.GracefulShutdownTimeSec == 0 {
 		o.GracefulShutdownTimeSec = defaultGracefulShutdownTimeSec
 	}
-	if o.DisableOIDCMiddleware == false && (o.OIDCOptions.OIDCDomain != "" ||
-		o.OIDCOptions.ServerDomain != "") {
+	if o.DisableOIDCMiddleware == false && (o.OIDCOptions.Issuer == "" ||
+		o.OIDCOptions.Audience == "") {
 		logger.Panicf("OIDC middleware is enabled in server configuration, but no valid configuration was provided.")
 	}
 }
@@ -104,7 +105,8 @@ func NewChiServer(routesRegistrationHandler func(r *chi.Mux), options *ChiServer
 	}
 	r.Use(render.SetContentType(render.ContentTypeJSON))
 	if !options.DisableOIDCMiddleware {
-		jwtAuth := msm.NewJWTAuthenticator(options.OIDCOptions.ServerDomain, options.OIDCOptions.OIDCDomain)
+		jwtAuth := msm.NewJWTAuthenticator(options.OIDCOptions.Audience, options.OIDCOptions.Issuer, options.OIDCOptions.JwksURL,
+			options.OIDCOptions.PublicURLsPrefixes)
 		r.Use(jwtAuth.GetHandler())
 		r.Use(msm.NewUserInfoSetter(msm.CtxTokenKey, msm.ClaimUserKey))
 	}

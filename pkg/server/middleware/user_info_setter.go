@@ -24,7 +24,7 @@ func NewUserInfoSetter(ctxTokenKey, claimUserKey string) func(http.Handler) http
 		fn := func(w http.ResponseWriter, r *http.Request) {
 			token, ok := r.Context().Value(ctxTokenKey).(*jwt.Token)
 			if !ok || token == nil {
-				render.Render(w, r, ErrAuth(errors.New("auth token info not found in Context()")))
+				next.ServeHTTP(w, r)
 				return
 			}
 
