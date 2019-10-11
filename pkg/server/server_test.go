@@ -18,13 +18,16 @@ type testHelper struct {
 	client  *http.Client
 }
 
-func getTestHelper(options *server.ChiServerOptions) *testHelper {
+func getTestHelper(regFunction func(r *chi.Mux), options *server.ChiServerOptions) *testHelper {
 
-	server := server.NewChiServer(func(r *chi.Mux) {
-		r.Get("/hello", func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("Hello root"))
-		})
-	}, options)
+	if regFunction == nil {
+		regFunction = func(r *chi.Mux) {
+			r.Get("/hello", func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte("Hello root"))
+			})
+		}
+	}
+	server := server.NewChiServer(regFunction, options)
 	go func() {
 		server.Run()
 	}()
@@ -47,7 +50,7 @@ func (th *testHelper) cleanup() {
 }
 
 func TestHealthcheck(t *testing.T) {
-	h := getTestHelper(&server.ChiServerOptions{
+	h := getTestHelper(nil, &server.ChiServerOptions{
 		HTTPPort:              8080,
 		DisableOIDCMiddleware: true,
 	})
@@ -64,4 +67,30 @@ func TestHealthcheck(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	assert.Equal(t, ".", string(body))
+}
+
+func TestPublicPath(t *testing.T) {
+	h := getTestHelper(nil, &server.ChiServerOptions{
+		HTTPPort:              8080,
+		DisableOIDCMiddleware: true,
+		OIDCOptions: server.ChiOIDCMiddlewareOptions{
+			Audience:           "http://localhost",
+			Issuer:             "https://your-oidc-provider.com/",
+			JwksURL:            "https://your-oidc-provider.com/.well-known/jwks.json",
+			PublicURLsPrefixes: []string{"/hello"},
+		},
+	})
+	defer h.cleanup()
+
+	time.Sleep(100 * time.Millisecond)
+	resp, err := h.client.Get("http://localhost:8080/hello")
+	if err != nil {
+		t.Fatalf("Server did not respond: %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+
+	assert.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, "Hello root", string(body))
 }
