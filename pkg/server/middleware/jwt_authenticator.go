@@ -17,6 +17,13 @@ import (
 	"github.com/dgrijalva/jwt-go"
 )
 
+const (
+	// CtxJWTKey allows to get JWT token
+	CtxJWTKey = "jwt_token"
+	// ClaimUserKey JWT token claim with subject name
+	// ClaimUserKey = "sub"
+)
+
 type jwks struct {
 	Keys []jsonWebKey `json:"keys"`
 }
@@ -90,7 +97,7 @@ func (a *JwtAuthenticator) GetHandler() func(next http.Handler) http.Handler {
 			return key, err
 		},
 		SigningMethod: jwt.SigningMethodRS256,
-		UserProperty:  CtxTokenKey,
+		UserProperty:  CtxJWTKey,
 	})
 
 	return func(next http.Handler) http.Handler {

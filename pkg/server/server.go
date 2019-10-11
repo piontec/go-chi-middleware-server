@@ -34,6 +34,7 @@ type ChiServerOptions struct {
 	DisableHeartbeat        bool
 	DisableURLFormat        bool
 	OIDCOptions             ChiOIDCMiddlewareOptions
+	ContextSetterOptions    ChiContextSetterOptions
 }
 
 // ChiOIDCMiddlewareOptions configures OIDC Middleware
@@ -42,6 +43,11 @@ type ChiOIDCMiddlewareOptions struct {
 	Issuer             string
 	JwksURL            string
 	PublicURLsPrefixes []string
+}
+
+// ChiContextSetterOptions configures the ContextSetter Middleware
+type ChiContextSetterOptions struct {
+	ClaimToContextKeyMapping map[string]interface{}
 }
 
 func (o *ChiServerOptions) fillDefaults(logger *logrus.Logger) {
@@ -108,7 +114,7 @@ func NewChiServer(routesRegistrationHandler func(r *chi.Mux), options *ChiServer
 		jwtAuth := msm.NewJWTAuthenticator(options.OIDCOptions.Audience, options.OIDCOptions.Issuer, options.OIDCOptions.JwksURL,
 			options.OIDCOptions.PublicURLsPrefixes)
 		r.Use(jwtAuth.GetHandler())
-		r.Use(msm.NewUserInfoSetter(msm.CtxTokenKey, msm.ClaimUserKey))
+		r.Use(msm.NewContextSetter(options.ContextSetterOptions.ClaimToContextKeyMapping))
 	}
 
 	if routesRegistrationHandler != nil {
