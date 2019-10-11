@@ -40,8 +40,13 @@ func main() {
 		OIDCOptions: server.ChiOIDCMiddlewareOptions{
 			Audience:           "http://localhost",
 			Issuer:             "https://failedcloud.eu.auth0.com/",
-			JwksURL:            "https://www.googleapis.com/oauth2/v3/certs",
+			JwksURL:            "https://failedcloud.eu.auth0.com/.well-known/jwks.json",
 			PublicURLsPrefixes: []string{"/pub"},
+		},
+		ContextSetterOptions: server.ChiContextSetterOptions{
+			ClaimToContextKeyMapping: map[string]interface{}{
+				"sub": "user",
+			},
 		},
 		// DisableOIDCMiddleware: true,
 	})
