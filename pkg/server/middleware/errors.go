@@ -26,25 +26,25 @@ func (e *ErrResponse) Render(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-// // ErrInvalidRequest is returned for invalid requests
-// func ErrInvalidRequest(err error) render.Renderer {
-// 	return &ErrResponse{
-// 		Err:            err,
-// 		HTTPStatusCode: 400,
-// 		StatusText:     "Invalid request.",
-// 		ErrorText:      err.Error(),
-// 	}
-// }
+// ErrInvalidRequest is returned for invalid requests
+func ErrInvalidRequest(err error) render.Renderer {
+	return &ErrResponse{
+		Err:            err,
+		HTTPStatusCode: 400,
+		StatusText:     "Invalid request.",
+		ErrorText:      err.Error(),
+	}
+}
 
-// // ErrRender is returned when there was rendering error
-// func ErrRender(err error) render.Renderer {
-// 	return &ErrResponse{
-// 		Err:            err,
-// 		HTTPStatusCode: 422,
-// 		StatusText:     "Error rendering response.",
-// 		ErrorText:      err.Error(),
-// 	}
-// }
+// ErrRender is returned when there was rendering error
+func ErrRender(err error) render.Renderer {
+	return &ErrResponse{
+		Err:            err,
+		HTTPStatusCode: 422,
+		StatusText:     "Error rendering response.",
+		ErrorText:      err.Error(),
+	}
+}
 
 // ErrAuth is returned when there was error during authentication
 func ErrAuth(err error) render.Renderer {
@@ -56,5 +56,8 @@ func ErrAuth(err error) render.Renderer {
 	}
 }
 
-// // ErrNotFound - guess when it's returned
-// var ErrNotFound = &ErrResponse{HTTPStatusCode: 404, StatusText: "Resource not found."}
+// ErrNotFound - guess when it's returned
+var ErrNotFound = &ErrResponse{
+	HTTPStatusCode: 404,
+	StatusText:     "Resource not found.",
+}
