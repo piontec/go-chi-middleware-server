@@ -11,21 +11,28 @@ import (
 
 // adapted from: https://github.com/go-chi/chi/blob/master/_examples/logging/main.go
 
+// LogrusFieldFuncs is a map that sets additional fields in logs (based on keys)
+// using a function acting on the http.Request
+type LogrusFieldFuncs map[string](func(r *http.Request) string)
+
 // NewStructuredLogger is a simple, but powerful implementation of a custom structured
 // logger backed on logrus. I encourage users to copy it, adapt it and make it their
 // own. Also take a look at https://github.com/pressly/lg for a dedicated pkg based
 // on this work, designed for context-based http routers.
-func NewStructuredLogger(logger *logrus.Logger, extraFields logrus.Fields) func(next http.Handler) http.Handler {
+func NewStructuredLogger(logger *logrus.Logger, extraFields logrus.Fields,
+	extraFieldFuncs LogrusFieldFuncs) func(next http.Handler) http.Handler {
 	return middleware.RequestLogger(&StructuredLogger{
-		Logger:      logger,
-		ExtraFields: extraFields,
+		Logger:          logger,
+		ExtraFields:     extraFields,
+		ExtraFieldFuncs: extraFieldFuncs,
 	})
 }
 
 // StructuredLogger implements custom structured middleware logger
 type StructuredLogger struct {
-	Logger      *logrus.Logger
-	ExtraFields logrus.Fields
+	Logger          *logrus.Logger
+	ExtraFields     logrus.Fields
+	ExtraFieldFuncs LogrusFieldFuncs
 }
 
 // NewLogEntry creates new log entry using information from the http.Request
@@ -36,6 +43,11 @@ func (l *StructuredLogger) NewLogEntry(r *http.Request) middleware.LogEntry {
 		logFields = l.ExtraFields
 	} else {
 		logFields = logrus.Fields{}
+	}
+
+	// add logfields coming from function calls
+	for key, fun := range l.ExtraFieldFuncs {
+		logFields[key] = fun(r)
 	}
 
 	logFields["ts"] = time.Now().UTC().Format(time.RFC1123)
