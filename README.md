@@ -69,6 +69,11 @@ r := server.NewChiServer(func(r *chi.Mux) {
     LoggerFields: logrus.Fields{ // optional; this configures logging to include all "key": "value" pairs in each log message
         "testing": "test",
     },
+    LoggerFieldFuncs        msm.LogrusFieldFuncs{ // optional; allows to use additional field based on function call in log entries
+        "url": func(r *http.Request) string {
+            return r.URL
+        },
+    },
     OIDCOptions: server.ChiOIDCMiddlewareOptions{ // provide only when OIDC middleware is enabled (default setting)
         Audience:           "http://localhost", // audience claim expected in the JWT token
         Issuer:             "https://your-oidc-provider.com/", // issuer claim expected in the JWT token

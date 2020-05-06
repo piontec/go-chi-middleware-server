@@ -27,6 +27,7 @@ const (
 type ChiServerOptions struct {
 	HTTPPort                int
 	LoggerFields            logrus.Fields
+	LoggerFieldFuncs        msm.LogrusFieldFuncs
 	GracefulShutdownTimeSec int
 	DisableOIDCMiddleware   bool
 	DisableRequestID        bool
@@ -101,7 +102,7 @@ func NewChiServer(routesRegistrationHandler func(r *chi.Mux), options *ChiServer
 	if !options.DisableRealIP {
 		r.Use(middleware.RealIP)
 	}
-	r.Use(msm.NewStructuredLogger(logger, options.LoggerFields))
+	r.Use(msm.NewStructuredLogger(logger, options.LoggerFields, options.LoggerFieldFuncs))
 	r.Use(middleware.Recoverer)
 	if !options.DisableHeartbeat {
 		r.Use(middleware.Heartbeat("/ping"))
