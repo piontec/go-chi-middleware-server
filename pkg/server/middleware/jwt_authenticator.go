@@ -14,7 +14,7 @@ import (
 	"sync"
 
 	jwtmiddleware "github.com/auth0/go-jwt-middleware"
-	"github.com/dgrijalva/jwt-go"
+	"github.com/form3tech-oss/jwt-go"
 )
 
 const (
